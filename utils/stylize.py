@@ -14,122 +14,122 @@ from utils.featureExtract import extract_feats, get_feat_norms
 from utils import misc
 from utils.misc import to_device, flatten_grid, scl_spatial
 from utils.colorization import color_match
+class Lite(LightningLite):
+    def produce_stylization(content_im, style_im, phi,
+                          max_iter=350,
+                          lr=1e-3,
+                          content_weight=1.,
+                          max_scls=0,
+                          flip_aug=False,
+                          content_loss=False,
+                          zero_init=False,
+                          dont_colorize=False):
+      """ Produce stylization of 'content_im' in the style of 'style_im'
+          Inputs:
+              content_im -- 1x3xHxW pytorch tensor containing rbg content image
+              style_im -- 1x3xH'xW' pytorch tensor containing rgb style image
+              phi -- lambda function to extract features using VGG16Pretrained
+              max_iter -- number of updates to image pyramid per scale
+              lr -- learning rate of optimizer updating pyramid coefficients
+              content_weight -- controls stylization level, between 0 and 1
+              max_scl -- number of scales to stylize (performed coarse to fine)
+              flip_aug -- extract features from rotations of style image too?
+              content_loss -- use self-sim content loss? (compares downsampled
+                              version of output and content image)
+              zero_init -- if true initialize w/ grey image, o.w. initialize w/
+                           downsampled content image
+      """
+      # Get max side length of final output and set number of pyramid levels to 
+      # optimize over
+      max_size = max(content_im.size(2), content_im.size(3))
+      pyr_levs = 8
 
-def produce_stylization(content_im, style_im, phi,
-                        max_iter=350,
-                        lr=1e-3,
-                        content_weight=1.,
-                        max_scls=0,
-                        flip_aug=False,
-                        content_loss=False,
-                        zero_init=False,
-                        dont_colorize=False):
-    """ Produce stylization of 'content_im' in the style of 'style_im'
-        Inputs:
-            content_im -- 1x3xHxW pytorch tensor containing rbg content image
-            style_im -- 1x3xH'xW' pytorch tensor containing rgb style image
-            phi -- lambda function to extract features using VGG16Pretrained
-            max_iter -- number of updates to image pyramid per scale
-            lr -- learning rate of optimizer updating pyramid coefficients
-            content_weight -- controls stylization level, between 0 and 1
-            max_scl -- number of scales to stylize (performed coarse to fine)
-            flip_aug -- extract features from rotations of style image too?
-            content_loss -- use self-sim content loss? (compares downsampled
-                            version of output and content image)
-            zero_init -- if true initialize w/ grey image, o.w. initialize w/
-                         downsampled content image
-    """
-    # Get max side length of final output and set number of pyramid levels to 
-    # optimize over
-    max_size = max(content_im.size(2), content_im.size(3))
-    pyr_levs = 8
+      # Decompose style image, content image, and output image into laplacian 
+      # pyramid
+      style_pyr = dec_pyr(style_im, pyr_levs)
+      c_pyr = dec_pyr(content_im, pyr_levs)
+      s_pyr = dec_pyr(content_im.clone(), pyr_levs)
 
-    # Decompose style image, content image, and output image into laplacian 
-    # pyramid
-    style_pyr = dec_pyr(style_im, pyr_levs)
-    c_pyr = dec_pyr(content_im, pyr_levs)
-    s_pyr = dec_pyr(content_im.clone(), pyr_levs)
+      # Initialize output image pyramid
+      if zero_init:
+          # Initialize with flat grey image (works, but less vivid)
+          for i in range(len(s_pyr)):
+              s_pyr[i] = s_pyr[i] * 0.
+          s_pyr[-1] = s_pyr[-1] * 0. + 0.5
 
-    # Initialize output image pyramid
-    if zero_init:
-        # Initialize with flat grey image (works, but less vivid)
-        for i in range(len(s_pyr)):
-            s_pyr[i] = s_pyr[i] * 0.
-        s_pyr[-1] = s_pyr[-1] * 0. + 0.5
+      else:
+          # Initialize with low-res version of content image (generally better 
+          # results, improves contrast of final output)
+          z_max = 2
+          if max_size < 1024:
+              z_max = 3
 
-    else:
-        # Initialize with low-res version of content image (generally better 
-        # results, improves contrast of final output)
-        z_max = 2
-        if max_size < 1024:
-            z_max = 3
+          for i in range(z_max):
+              s_pyr[i] = s_pyr[i] * 0.
 
-        for i in range(z_max):
-            s_pyr[i] = s_pyr[i] * 0.
+      # Stylize using hypercolumn matching from coarse to fine scale
+      li = -1
+      for scl in range(max_scls)[::-1]:
 
-    # Stylize using hypercolumn matching from coarse to fine scale
-    li = -1
-    for scl in range(max_scls)[::-1]:
-
-        # Get content image and style image from pyramid at current resolution
-        if misc.USE_GPU:
-            torch.cuda.empty_cache()
-        style_im_tmp = syn_pyr(style_pyr[scl:])
-        content_im_tmp = syn_pyr(c_pyr[scl:])
-        output_im_tmp = syn_pyr(s_pyr[scl:])
-        li += 1
-        print(f'-{li, max(output_im_tmp.size(2),output_im_tmp.size(3))}-')
+          # Get content image and style image from pyramid at current resolution
+          if misc.USE_GPU:
+              torch.cuda.empty_cache()
+          style_im_tmp = syn_pyr(style_pyr[scl:])
+          content_im_tmp = syn_pyr(c_pyr[scl:])
+          output_im_tmp = syn_pyr(s_pyr[scl:])
+          li += 1
+          print(f'-{li, max(output_im_tmp.size(2),output_im_tmp.size(3))}-')
 
 
-        # Construct stylized activations
-        with torch.no_grad():
+          # Construct stylized activations
+          with torch.no_grad():
 
-            # Control tradeoff between searching for features that match
-            # current iterate, and features that match content image (at
-            # coarsest scale, only use content image)    
-            alpha = content_weight
-            if li == 0:
-                alpha = 0.
+              # Control tradeoff between searching for features that match
+              # current iterate, and features that match content image (at
+              # coarsest scale, only use content image)    
+              alpha = content_weight
+              if li == 0:
+                  alpha = 0.
 
-            # Search for features using high frequencies from content 
-            # (but do not initialize actual output with them)
-            output_extract = syn_pyr([c_pyr[scl]] + s_pyr[(scl + 1):])
+              # Search for features using high frequencies from content 
+              # (but do not initialize actual output with them)
+              output_extract = syn_pyr([c_pyr[scl]] + s_pyr[(scl + 1):])
 
-            # Extract style features from rotated copies of style image
-            feats_s = extract_feats(style_im_tmp, phi, flip_aug=flip_aug).cpu()
+              # Extract style features from rotated copies of style image
+              feats_s = extract_feats(style_im_tmp, phi, flip_aug=flip_aug).cpu()
 
-            # Extract features from convex combination of content image and
-            # current iterate:
-            c_tmp = (output_extract * alpha) + (content_im_tmp * (1. - alpha))
-            feats_c = extract_feats(c_tmp, phi).cpu()
+              # Extract features from convex combination of content image and
+              # current iterate:
+              c_tmp = (output_extract * alpha) + (content_im_tmp * (1. - alpha))
+              feats_c = extract_feats(c_tmp, phi).cpu()
 
-            # Replace content features with style features
-            target_feats = replace_features(feats_c, feats_s)
+              # Replace content features with style features
+              target_feats = replace_features(feats_c, feats_s)
 
-        # Synthesize output at current resolution using hypercolumn matching
-        s_pyr = optimize_output_im(s_pyr, c_pyr, content_im, style_im_tmp,
-                                   target_feats, lr, max_iter, scl, phi,
-                                   content_loss=content_loss)
+          # Synthesize output at current resolution using hypercolumn matching
+          s_pyr = optimize_output_im(s_pyr, c_pyr, content_im, style_im_tmp,
+                                     target_feats, lr, max_iter, scl, phi,
+                                     content_loss=content_loss)
 
-        # Get output at current resolution from pyramid
-        with torch.no_grad():
-            output_im = syn_pyr(s_pyr)
+          # Get output at current resolution from pyramid
+          with torch.no_grad():
+              output_im = syn_pyr(s_pyr)
 
-    # Perform final pass using feature splitting (pass in flip_aug argument
-    # because style features are extracted internally in this regime)
-    s_pyr = optimize_output_im(s_pyr, c_pyr, content_im, style_im_tmp,
-                               target_feats, lr, max_iter, scl, phi,
-                               final_pass=True, content_loss=content_loss,
-                               flip_aug=flip_aug)
+      # Perform final pass using feature splitting (pass in flip_aug argument
+      # because style features are extracted internally in this regime)
+      s_pyr = optimize_output_im(s_pyr, c_pyr, content_im, style_im_tmp,
+                                 target_feats, lr, max_iter, scl, phi,
+                                 final_pass=True, content_loss=content_loss,
+                                 flip_aug=flip_aug)
 
-    # Get final output from pyramid
-    with torch.no_grad():
-        output_im = syn_pyr(s_pyr)
+      # Get final output from pyramid
+      with torch.no_grad():
+          output_im = syn_pyr(s_pyr)
 
-    if dont_colorize:
-        return output_im
-    else:
-        return color_match(content_im, style_im, output_im)
+      if dont_colorize:
+          return output_im
+      else:
+          return color_match(content_im, style_im, output_im)
 
 def replace_features(src, ref):
     """ Replace each feature vector in 'src' with the nearest (under centered 
