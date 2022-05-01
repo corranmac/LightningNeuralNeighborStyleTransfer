@@ -15,7 +15,7 @@ from utils.stylize import produce_stylization
 class Predictor(BasePredictor):
     def setup(self):
         # Define feature extractor
-        cnn = misc.to_device(Vgg16Pretrained())
+        cnn = Vgg16Pretrained()
         self.phi = lambda x, y, z: cnn.forward(x, inds=y, concat=z)
 
     def predict(
@@ -60,12 +60,8 @@ class Predictor(BasePredictor):
         ), "attempted to use gpu when unavailable"
 
         # Load images
-        content_im_orig = misc.to_device(
-            load_path_for_pytorch(str(content), target_size=sz)
-        ).unsqueeze(0)
-        style_im_orig = misc.to_device(
-            load_path_for_pytorch(str(style), target_size=sz)
-        ).unsqueeze(0)
+        content_im_orig =load_path_for_pytorch(str(content), target_size=sz).unsqueeze(0)
+        style_im_orig =load_path_for_pytorch(str(style), target_size=sz).unsqueeze(0)
 
         # Run Style Transfer
         torch.cuda.synchronize()
