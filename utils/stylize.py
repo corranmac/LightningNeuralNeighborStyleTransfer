@@ -216,7 +216,7 @@ def optimize_output_im(s_pyr, c_pyr, content_im, style_im, target_feats,
     # Initialize optimizer variables and optimizer       
     output_im = syn_pyr(s_pyr[scl:])
     opt_vars = [Variable(li.data, requires_grad=True) for li in s_pyr[scl:]]
-    optimizer = torch.optim.Adam(opt_vars, lr=lr)
+    optimizer = torch.optim.SGD(opt_vars, lr=lr)
 
     # Original features uses all layers, but dropping conv5 block  speeds up 
     # method without hurting quality
@@ -334,7 +334,7 @@ def optimize_output_im(s_pyr, c_pyr, content_im, style_im, target_feats,
             ell = ell + torch.mean(torch.abs((self_sim_out - self_sim_target)))
 
         # Update output's pyramid coefficients
-        ell.backward()
+        self.backward(ell)
         optimizer.step()
 
     # Update output's pyramid coefficients for current resolution
