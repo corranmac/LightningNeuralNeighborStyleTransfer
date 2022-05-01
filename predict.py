@@ -66,7 +66,7 @@ class Predictor(BasePredictor):
         # Run Style Transfer
         torch.cuda.synchronize()
         start_time = time.time()
-        output = produce_stylization(
+        output = Lite(devices="auto", accelerator="auto", precision=16).produce_stylization(
             content_im_orig,
             style_im_orig,
             self.phi,
