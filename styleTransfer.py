@@ -52,12 +52,12 @@ assert (0.0 <= content_weight) and (content_weight <= 1.0), "alpha must be betwe
 assert torch.cuda.is_available() or (not misc.USE_GPU), "attempted to use gpu when unavailable"
 
 # Define feature extractor
-cnn = misc.to_device(Vgg16Pretrained())
+cnn = Vgg16Pretrained()
 phi = lambda x, y, z: cnn.forward(x, inds=y, concat=z)
 
 # Load images
-content_im_orig = misc.to_device(load_path_for_pytorch(content_path, target_size=sz)).unsqueeze(0)
-style_im_orig = misc.to_device(load_path_for_pytorch(style_path, target_size=sz)).unsqueeze(0)
+content_im_orig = load_path_for_pytorch(content_path, target_size=sz).unsqueeze(0)
+style_im_orig = load_path_for_pytorch(style_path, target_size=sz).unsqueeze(0)
 
 # Run Style Transfer
 torch.cuda.synchronize()
