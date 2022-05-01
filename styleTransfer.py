@@ -17,7 +17,7 @@ import numpy as np
 from pretrained.vgg import Vgg16Pretrained
 from utils import misc as misc
 from utils.misc import load_path_for_pytorch
-from utils.stylize import produce_stylization
+from utils.stylize import Lite(LightningLite)
 
 # Fix Random Seed
 random.seed(0)
