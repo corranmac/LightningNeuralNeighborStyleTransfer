@@ -143,7 +143,7 @@ def replace_features(src, ref):
     """
     # Move style features to gpu (necessary to mostly store on cpu for gpus w/
     # < 12GB of memory)
-    ref_flat = to_device(flatten_grid(ref))
+    ref_flat = flatten_grid(ref)
     rplc = []
     for j in range(src.size(0)):
         # How many rows of the distance matrix to compute at once, can be
@@ -162,7 +162,7 @@ def replace_features(src, ref):
             # Get chunck of content features, compute corresponding portion
             # distance matrix, and store nearest style feature to each content
             # feature
-            src_flat = to_device(src_flat_all[bi:ei, :])
+            src_flat = src_flat_all[bi:ei, :]
             d_mat = pairwise_distances_cos_center(ref_flat, src_flat)
             _, nn_inds = torch.min(d_mat, 0)
             del d_mat  # distance matrix uses lots of memory, free asap
